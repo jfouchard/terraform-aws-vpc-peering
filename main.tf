@@ -27,6 +27,13 @@ resource "aws_vpc_peering_connection" "default" {
   tags = "${module.label.tags}"
 }
 
+data "aws_region" "default" {}
+
+provider "aws" {
+  alias = "acceptor"
+  region = "${var.acceptor_vpc_region != "" ? var.acceptor_vpc_region : data.aws_region.default.name}"
+}
+
 # Lookup requestor VPC so that we can reference the CIDR
 data "aws_vpc" "requestor" {
   count = "${var.enabled == "true" ? 1 : 0}"
@@ -48,19 +55,22 @@ data "aws_subnet_ids" "requestor" {
 
 # Lookup acceptor VPC so that we can reference the CIDR
 data "aws_vpc" "acceptor" {
-  count = "${var.enabled == "true" ? 1 : 0}"
-  id    = "${var.acceptor_vpc_id}"
-  tags  = "${var.acceptor_vpc_tags}"
+  provider = "aws.acceptor"
+  count    = "${var.enabled == "true" ? 1 : 0}"
+  id       = "${var.acceptor_vpc_id}"
+  tags     = "${var.acceptor_vpc_tags}"
 }
 
 # Lookup acceptor subnets
 data "aws_subnet_ids" "acceptor" {
-  count  = "${var.enabled == "true" ? 1 : 0}"
-  vpc_id = "${data.aws_vpc.acceptor.id}"
+  provider = "aws.acceptor"
+  count    = "${var.enabled == "true" ? 1 : 0}"
+  vpc_id   = "${data.aws_vpc.acceptor.id}"
 }
 
 # Lookup acceptor route tables
 data "aws_route_table" "acceptor" {
+  provider  = "aws.acceptor"
   count     = "${var.enabled == "true" ? length(distinct(sort(data.aws_subnet_ids.acceptor.ids))) : 0}"
   subnet_id = "${element(distinct(sort(data.aws_subnet_ids.acceptor.ids)), count.index)}"
 }
@@ -76,6 +86,7 @@ resource "aws_route" "requestor" {
 
 # Create routes from acceptor to requestor
 resource "aws_route" "acceptor" {
+  provider = "aws.acceptor"
   count                     = "${var.enabled == "true" ? length(distinct(sort(data.aws_route_table.acceptor.*.route_table_id))) * length(data.aws_vpc.requestor.cidr_block_associations) : 0}"
   route_table_id            = "${element(distinct(sort(data.aws_route_table.acceptor.*.route_table_id)), ceil(count.index / (length(data.aws_vpc.requestor.cidr_block_associations))))}"
   destination_cidr_block    = "${lookup(data.aws_vpc.requestor.cidr_block_associations[count.index % (length(data.aws_vpc.requestor.cidr_block_associations))], "cidr_block")}"

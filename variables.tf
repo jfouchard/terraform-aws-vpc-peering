@@ -21,6 +21,12 @@ variable "acceptor_vpc_id" {
   default     = ""
 }
 
+variable "acceptor_vpc_region" {
+  type        = "string"
+  description = "Acceptor VPC region"
+  default     = ""
+}
+
 variable "acceptor_vpc_tags" {
   type        = "map"
   description = "Acceptor VPC tags"
